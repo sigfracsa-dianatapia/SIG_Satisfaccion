@@ -1,42 +1,41 @@
 import streamlit as st
 import pandas as pd
-import os
 from datetime import datetime
+import os
 
+# =========================
+# CONFIGURACIÓN GENERAL
+# =========================
 st.set_page_config(page_title="SIG - Indicadores", layout="wide")
 
-# =====================================================
-# MENÚ PRINCIPAL
-# =====================================================
-st.sidebar.title("📊 SIG - Indicadores")
-modulo = st.sidebar.selectbox("Selecciona módulo", [
+menu = st.sidebar.selectbox("📌 Selecciona módulo", [
     "Evaluación de Proveedores",
     "Satisfacción del Cliente"
 ])
 
-# =====================================================
-# =====================================================
-# 🔵 MODULO 1: PROVEEDORES
-# =====================================================
-# =====================================================
-if modulo == "Evaluación de Proveedores":
+# ============================================================
+# =================== MODULO 1: PROVEEDORES ===================
+# ============================================================
+if menu == "Evaluación de Proveedores":
 
-    st.title("📊 Evaluación de Proveedores")
+    FILE_NAME = "proveedores.csv"
 
-    if "prov_data" not in st.session_state:
-        st.session_state.prov_data = pd.DataFrame(columns=[
+    if not os.path.exists(FILE_NAME):
+        df_init = pd.DataFrame(columns=[
             "N°","MES","RUC","PROVEEDOR","RUBRO","PUNTAJE",
             "ESTATUS","CALIFICACION","FECHA","REEVALUACION",
             "ESTADO","CRITICIDAD","ESTADO PROV"
         ])
+        df_init.to_csv(FILE_NAME, index=False)
 
-    df = st.session_state.prov_data
+    df = pd.read_csv(FILE_NAME)
 
-    # FORMULARIO
-    st.subheader("📝 Registro")
+    st.title("📊 Evaluación de Proveedores")
 
-    with st.form("form_prov"):
+    # ---------------- FORMULARIO ----------------
+    st.subheader("➕ Registrar Evaluación")
 
+    with st.form("form_proveedor", clear_on_submit=True):
         col1, col2, col3 = st.columns(3)
 
         with col1:
@@ -46,79 +45,118 @@ if modulo == "Evaluación de Proveedores":
                 "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"
             ])
             ruc = st.text_input("RUC")
+            proveedor = st.text_input("PROVEEDOR")
 
         with col2:
-            proveedor = st.text_input("PROVEEDOR")
             rubro = st.text_input("RUBRO")
-            puntaje = st.number_input("PUNTAJE", 0, 100)
+            puntaje = st.number_input("PUNTAJE (0 a 5)", min_value=0.0, max_value=5.0, step=0.1)
+            criticidad = st.selectbox("CRITICIDAD", ["CRITICO", "NO CRITICO"])
+            estado_prov = st.selectbox("ESTADO PROV", ["ACTIVO", "INACTIVO"])
 
         with col3:
-            estatus = st.selectbox("ESTATUS", ["Aprobado", "Desaprobado"])
-            calificacion = st.text_input("CALIFICACIÓN")
-            criticidad = st.selectbox("CRITICIDAD", ["Crítico", "No Crítico"])
-
-        fecha = st.date_input("FECHA", datetime.today())
-        reevaluacion = st.date_input("REEVALUACIÓN")
-        estado = st.selectbox("ESTADO", ["Vigente", "No Vigente"])
-        estado_prov = st.selectbox("ESTADO PROV", ["Activo", "Inactivo"])
+            fecha = st.date_input("FECHA", value=datetime.today())
+            reevaluacion = st.date_input("REEVALUACION")
 
         if st.form_submit_button("Guardar"):
 
-            nueva = pd.DataFrame([{
-                "N°": numero,
-                "MES": mes,
-                "RUC": ruc,
-                "PROVEEDOR": proveedor,
-                "RUBRO": rubro,
-                "PUNTAJE": puntaje,
-                "ESTATUS": estatus,
-                "CALIFICACION": calificacion,
-                "FECHA": fecha,
-                "REEVALUACION": reevaluacion,
-                "ESTADO": estado,
-                "CRITICIDAD": criticidad,
-                "ESTADO PROV": estado_prov
-            }])
+            if ruc == "" or proveedor == "":
+                st.error("⚠️ RUC y PROVEEDOR son obligatorios")
+            else:
+                if puntaje >= 4:
+                    estatus = "APROBADO"
+                    calificacion = "BUENO"
+                elif puntaje >= 3:
+                    estatus = "OBSERVADO"
+                    calificacion = "REGULAR"
+                else:
+                    estatus = "NO APROBADO"
+                    calificacion = "DEFICIENTE"
 
-            st.session_state.prov_data = pd.concat([df, nueva], ignore_index=True)
-            st.success("✅ Guardado")
+                estado = "VIGENTE" if estado_prov == "ACTIVO" else "NO VIGENTE"
 
-    # KPI
-    st.subheader("📈 Indicador")
+                nuevo = pd.DataFrame([{
+                    "N°": numero,
+                    "MES": mes,
+                    "RUC": ruc,
+                    "PROVEEDOR": proveedor,
+                    "RUBRO": rubro,
+                    "PUNTAJE": puntaje,
+                    "ESTATUS": estatus,
+                    "CALIFICACION": calificacion,
+                    "FECHA": fecha,
+                    "REEVALUACION": reevaluacion,
+                    "ESTADO": estado,
+                    "CRITICIDAD": criticidad,
+                    "ESTADO PROV": estado_prov
+                }])
 
-    df = st.session_state.prov_data
+                df = pd.concat([df, nuevo], ignore_index=True)
+                df.to_csv(FILE_NAME, index=False)
+                st.success("✅ Registro guardado")
+
+    # ---------------- TABLA ----------------
+    st.subheader("📋 Base de Datos")
 
     if not df.empty:
-        total_criticos = df[df["CRITICIDAD"] == "Crítico"].shape[0]
-        aprobados = df[(df["CRITICIDAD"] == "Crítico") & (df["ESTATUS"] == "Aprobado")].shape[0]
+        edited_df = st.data_editor(df, use_container_width=True)
 
-        indicador = (aprobados / total_criticos * 100) if total_criticos > 0 else 0
+        if st.button("💾 Guardar cambios"):
+            edited_df.to_csv(FILE_NAME, index=False)
+            st.success("Cambios guardados")
 
-        st.metric("% Evaluación", f"{indicador:.2f}%")
+    # ---------------- ELIMINACIÓN ----------------
+    st.subheader("🗑️ Eliminar registros")
 
-        if indicador >= 95:
-            st.success("Meta cumplida ✅")
-        else:
-            st.error("Meta no cumplida ❌")
+    if not df.empty:
+        seleccion = st.multiselect(
+            "Selecciona registros",
+            options=df.index,
+            format_func=lambda x: f"{df.loc[x,'PROVEEDOR']} - {df.loc[x,'RUC']}"
+        )
 
-    st.dataframe(df, use_container_width=True)
+        if st.button("Eliminar seleccionados"):
+            if seleccion:
+                df = df.drop(seleccion).reset_index(drop=True)
+                df.to_csv(FILE_NAME, index=False)
+                st.success("Registros eliminados")
 
-# =====================================================
-# =====================================================
-# 🟢 MODULO 2: SATISFACCIÓN DEL CLIENTE
-# =====================================================
-# =====================================================
-elif modulo == "Satisfacción del Cliente":
+        if st.checkbox("Confirmar borrado total"):
+            if st.button("🧨 Borrar todo"):
+                df = df.iloc[0:0]
+                df.to_csv(FILE_NAME, index=False)
+                st.error("Base eliminada")
+
+    # ---------------- INDICADOR ----------------
+    st.subheader("📈 Indicador")
+
+    df_criticos = df[df["CRITICIDAD"] == "CRITICO"]
+
+    total = len(df_criticos)
+    aprobados = len(df_criticos[df_criticos["ESTATUS"] == "APROBADO"])
+
+    indicador = (aprobados / total) * 100 if total > 0 else 0
+
+    st.metric("Indicador (%)", f"{indicador:.2f}%")
+
+    if indicador >= 95:
+        st.success("✅ Meta cumplida")
+    else:
+        st.error("❌ Meta no cumplida")
+
+# ============================================================
+# ============== MODULO 2: SATISFACCION CLIENTE ===============
+# ============================================================
+elif menu == "Satisfacción del Cliente":
 
     FILE_PATH = "satisfaccion_cliente.xlsx"
     SHEET_NAME = "SIG (1)"
 
-    st.title("📊 Satisfacción del Cliente")
+    st.title("😊 Satisfacción del Cliente")
 
-    # FUNCIONES
+    # -------- FUNCIONES --------
     def cargar_datos():
         columnas = [
-            "MES", "FECHA DE EVALUACION", "CLIENTE EVALUADO",
+            "MES","FECHA DE EVALUACION","CLIENTE EVALUADO",
             "P1","P2","P3","P4","P5","P6","P7","P8","P9","P10"
         ]
         if os.path.exists(FILE_PATH):
@@ -134,22 +172,18 @@ elif modulo == "Satisfacción del Cliente":
 
     df = cargar_datos()
 
-    # FORMULARIO
+    # -------- FORMULARIO --------
     st.subheader("➕ Registrar evaluación")
 
     with st.form("form_cliente"):
-
         col1, col2, col3 = st.columns(3)
 
-        with col1:
-            mes = st.selectbox("MES", [
-                "Enero","Febrero","Marzo","Abril","Mayo","Junio",
-                "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"
-            ])
-        with col2:
-            fecha = st.date_input("FECHA")
-        with col3:
-            cliente = st.text_input("CLIENTE")
+        mes = col1.selectbox("MES", [
+            "Enero","Febrero","Marzo","Abril","Mayo","Junio",
+            "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"
+        ])
+        fecha = col2.date_input("FECHA")
+        cliente = col3.text_input("CLIENTE")
 
         st.markdown("### Evaluación (1-10)")
         preguntas = {}
@@ -162,37 +196,50 @@ elif modulo == "Satisfacción del Cliente":
                 )
 
         if st.form_submit_button("Guardar"):
-            nueva = {
-                "MES": mes,
-                "FECHA DE EVALUACION": fecha,
-                "CLIENTE EVALUADO": cliente
-            }
+            nueva = {"MES": mes, "FECHA DE EVALUACION": fecha, "CLIENTE EVALUADO": cliente}
             nueva.update(preguntas)
 
             df = pd.concat([df, pd.DataFrame([nueva])], ignore_index=True)
             guardar_datos(df)
-            st.success("✅ Guardado")
+            st.success("Registro guardado")
 
-    # KPI
+    # -------- KPI --------
     st.subheader("📈 Indicador")
 
     if not df.empty:
         respuestas = df[[f"P{i}" for i in range(1,11)]].values.flatten()
         respuestas = [r for r in respuestas if pd.notnull(r)]
 
-        porcentaje = (len([r for r in respuestas if r >= 8]) / len(respuestas) * 100) if respuestas else 0
+        positivas = len([r for r in respuestas if r >= 8])
+        porcentaje = (positivas / len(respuestas)) * 100 if respuestas else 0
 
-        estado = "🟢 Excelente" if porcentaje >= 90 else "🟡 Aceptable" if porcentaje >= 75 else "🔴 Crítico"
+        st.metric("% Satisfacción", f"{porcentaje:.2f}%")
 
-        col1, col2 = st.columns(2)
-        col1.metric("% Satisfacción", f"{porcentaje:.2f}%")
-        col2.metric("Estado", estado)
+        if porcentaje >= 90:
+            st.success("Excelente")
+        elif porcentaje >= 75:
+            st.warning("Aceptable")
+        else:
+            st.error("Crítico")
 
-    # HISTORIAL
+    # -------- HISTORIAL --------
     st.subheader("📋 Historial")
-    st.dataframe(df, use_container_width=True)
+    if not df.empty:
+        st.dataframe(df, use_container_width=True)
 
-    # GRÁFICO
+    # -------- ELIMINAR --------
+    st.subheader("🗑️ Eliminar")
+
+    if not df.empty:
+        idx = st.number_input("Índice", 0, len(df)-1)
+
+        if st.checkbox("Confirmar"):
+            if st.button("Eliminar"):
+                df = df.drop(idx).reset_index(drop=True)
+                guardar_datos(df)
+                st.success("Eliminado")
+
+    # -------- GRAFICO --------
     if not df.empty:
         df["Promedio"] = df[[f"P{i}" for i in range(1,11)]].mean(axis=1)
         st.subheader("📊 Tendencia")
