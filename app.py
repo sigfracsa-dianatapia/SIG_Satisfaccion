@@ -3,137 +3,216 @@ import pandas as pd
 import os
 from datetime import datetime
 
-st.set_page_config(page_title="SIG - Dashboard", layout="wide")
+st.set_page_config(page_title="SIG - Indicadores", layout="wide")
+
+# ============================================================
+# 🔧 FUNCIÓN IMPORTAR EXCEL
+# ============================================================
+def importar_excel(df_actual, columnas_esperadas, guardar_func):
+    st.subheader("📥 Importar datos desde Excel")
+    archivo = st.file_uploader("Sube tu archivo Excel", type=["xlsx"])
+
+    if archivo is not None:
+        try:
+            df_nuevo = pd.read_excel(archivo)
+
+            if not set(columnas_esperadas).issubset(set(df_nuevo.columns)):
+                st.error("❌ Estructura incorrecta")
+                return df_actual
+
+            df_final = pd.concat([df_actual, df_nuevo], ignore_index=True)
+            guardar_func(df_final)
+            st.success(f"✅ {len(df_nuevo)} registros importados")
+            return df_final
+
+        except Exception as e:
+            st.error(f"Error: {e}")
+
+    return df_actual
+
+# ============================================================
+# 🔴 FUNCIÓN BORRAR TODO (GLOBAL)
+# ============================================================
+def borrar_todo(df, guardar_func):
+    st.subheader("🧨 Borrar toda la base de datos")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        confirm1 = st.checkbox("Confirmo eliminar todos los registros")
+    with col2:
+        confirm2 = st.checkbox("Entiendo que no se puede deshacer")
+
+    if st.button("🚨 Ejecutar borrado total"):
+        if confirm1 and confirm2:
+            df = df.iloc[0:0]
+            guardar_func(df)
+            st.error("🚨 Base de datos eliminada completamente")
+            return df
+        else:
+            st.warning("⚠️ Debes confirmar ambas opciones")
+
+    return df
 
 # ============================================================
 # 📌 MENÚ
 # ============================================================
-menu = st.sidebar.selectbox("Selecciona vista", [
-    "Dashboard Gerencial",
+menu = st.sidebar.selectbox("Selecciona módulo", [
     "Proveedores",
     "Satisfacción Cliente",
     "Programación Servicios"
 ])
 
 # ============================================================
-# 📂 CARGA DE DATOS
+# =================== PROVEEDORES =============================
 # ============================================================
-def cargar_csv(file):
-    return pd.read_csv(file) if os.path.exists(file) else pd.DataFrame()
+if menu == "Proveedores":
 
-def cargar_excel(file):
-    return pd.read_excel(file) if os.path.exists(file) else pd.DataFrame()
+    FILE = "proveedores.csv"
 
-df_prov = cargar_csv("proveedores.csv")
-df_cli = cargar_excel("satisfaccion.xlsx")
-df_prog = cargar_excel("programacion.xlsx")
+    if not os.path.exists(FILE):
+        pd.DataFrame(columns=[
+            "N°","MES","RUC","PROVEEDOR","RUBRO","PUNTAJE",
+            "ESTATUS","CALIFICACION","FECHA","REEVALUACION",
+            "ESTADO","CRITICIDAD","ESTADO PROV"
+        ]).to_csv(FILE, index=False)
 
-# ============================================================
-# 🧠 DASHBOARD GERENCIAL
-# ============================================================
-if menu == "Dashboard Gerencial":
+    df = pd.read_csv(FILE)
 
-    st.title("📊 Dashboard Gerencial SIG")
+    def guardar(df): df.to_csv(FILE, index=False)
 
-    col1, col2, col3 = st.columns(3)
+    st.title("📊 Evaluación de Proveedores")
 
-    # ================= PROVEEDORES =================
-    with col1:
-        st.subheader("Proveedores")
+    columnas = [
+        "N°","MES","RUC","PROVEEDOR","RUBRO","PUNTAJE",
+        "ESTATUS","CALIFICACION","FECHA","REEVALUACION",
+        "ESTADO","CRITICIDAD","ESTADO PROV"
+    ]
 
-        if not df_prov.empty:
-            criticos = df_prov[df_prov["CRITICIDAD"] == "CRITICO"]
-            total = len(criticos)
-            aprobados = len(criticos[criticos["ESTATUS"] == "APROBADO"])
-            indicador = (aprobados / total) * 100 if total > 0 else 0
+    df = importar_excel(df, columnas, guardar)
 
-            st.metric("Indicador", f"{indicador:.2f}%")
+    # KPI
+    criticos = df[df["CRITICIDAD"]=="CRITICO"]
+    indicador = (len(criticos[criticos["ESTATUS"]=="APROBADO"]) / len(criticos))*100 if len(criticos)>0 else 0
+    st.metric("Indicador %", f"{indicador:.2f}%")
 
-            if indicador >= 95:
-                st.success("🟢 Cumple")
-            elif indicador >= 85:
-                st.warning("🟡 Riesgo")
-            else:
-                st.error("🔴 Crítico")
+    # 🔥 DASHBOARD
+    st.subheader("📊 Dashboard Proveedores")
 
-        else:
-            st.info("Sin datos")
+    if not df.empty:
+        col1, col2 = st.columns(2)
 
-    # ================= CLIENTES =================
-    with col2:
-        st.subheader("Satisfacción")
+        with col1:
+            st.write("Distribución de Estatus")
+            st.bar_chart(df["ESTATUS"].value_counts())
 
-        if not df_cli.empty:
-            preguntas = [f"P{i}" for i in range(1, 11)]
-            valores = df_cli[preguntas].values.flatten()
-            valores = [v for v in valores if pd.notnull(v)]
+        with col2:
+            st.write("Promedio de Puntaje")
+            st.metric("Promedio", f"{df['PUNTAJE'].mean():.2f}")
 
-            indicador = (len([v for v in valores if v >= 8]) / len(valores)) * 100 if valores else 0
+    # TABLA
+    st.data_editor(df)
 
-            st.metric("Satisfacción", f"{indicador:.2f}%")
-
-            if indicador >= 90:
-                st.success("🟢 Excelente")
-            elif indicador >= 75:
-                st.warning("🟡 Aceptable")
-            else:
-                st.error("🔴 Crítico")
-
-        else:
-            st.info("Sin datos")
-
-    # ================= PROGRAMACIÓN =================
-    with col3:
-        st.subheader("Cumplimiento")
-
-        if not df_prog.empty:
-            total = df_prog["CANTIDAD DE UNIDADES REQUERIDAS"].sum()
-            cumplidos = df_prog["CUMPLIDOS"].sum()
-            indicador = (cumplidos / total) * 100 if total > 0 else 0
-
-            st.metric("Cumplimiento", f"{indicador:.2f}%")
-
-            if indicador >= 95:
-                st.success("🟢 Cumple")
-            elif indicador >= 85:
-                st.warning("🟡 Riesgo")
-            else:
-                st.error("🔴 Crítico")
-
-        else:
-            st.info("Sin datos")
-
-    st.markdown("---")
-
-    # ========================================================
-    # 📊 TENDENCIAS
-    # ========================================================
-    st.subheader("📈 Tendencias")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        if not df_prog.empty and "% CUMPLIMIENTO" in df_prog.columns:
-            st.write("Cumplimiento de Servicios")
-            st.line_chart(df_prog["% CUMPLIMIENTO"])
-
-    with col2:
-        if not df_cli.empty:
-            df_cli["Promedio"] = df_cli[[f"P{i}" for i in range(1, 11)]].mean(axis=1)
-            st.write("Satisfacción del Cliente")
-            st.line_chart(df_cli["Promedio"])
+    # BORRAR TODO
+    df = borrar_todo(df, guardar)
 
 # ============================================================
-# 📊 MÓDULOS (SIMPLIFICADOS)
+# ================= SATISFACCIÓN ==============================
 # ============================================================
-elif menu == "Proveedores":
-    st.title("📊 Proveedores")
-    st.dataframe(df_prov)
-
 elif menu == "Satisfacción Cliente":
-    st.title("😊 Satisfacción Cliente")
-    st.dataframe(df_cli)
 
+    FILE = "satisfaccion.xlsx"
+
+    def cargar():
+        if os.path.exists(FILE):
+            return pd.read_excel(FILE)
+        return pd.DataFrame()
+
+    def guardar(df):
+        df.to_excel(FILE, index=False)
+
+    df = cargar()
+
+    st.title("😊 Satisfacción del Cliente")
+
+    columnas = ["MES","FECHA DE EVALUACION","CLIENTE EVALUADO"] + [f"P{i}" for i in range(1,11)]
+    df = importar_excel(df, columnas, guardar)
+
+    if not df.empty:
+        vals = df[[f"P{i}" for i in range(1,11)]].values.flatten()
+        vals = [v for v in vals if pd.notnull(v)]
+        indicador = (len([v for v in vals if v>=8])/len(vals))*100 if vals else 0
+        st.metric("% Satisfacción", f"{indicador:.2f}%")
+
+    # 🔥 DASHBOARD
+    st.subheader("📊 Dashboard Satisfacción")
+
+    if not df.empty:
+        df["Promedio"] = df[[f"P{i}" for i in range(1,11)]].mean(axis=1)
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.write("Tendencia de Satisfacción")
+            st.line_chart(df["Promedio"])
+
+        with col2:
+            st.write("Distribución de respuestas")
+            st.bar_chart(df[[f"P{i}" for i in range(1,11)]].mean())
+
+    st.dataframe(df)
+
+    # BORRAR TODO
+    df = borrar_todo(df, guardar)
+
+# ============================================================
+# ================= PROGRAMACIÓN ==============================
+# ============================================================
 elif menu == "Programación Servicios":
-    st.title("📊 Programación Servicios")
-    st.dataframe(df_prog)
+
+    FILE = "programacion.xlsx"
+
+    def cargar():
+        if os.path.exists(FILE):
+            return pd.read_excel(FILE)
+        return pd.DataFrame()
+
+    def guardar(df):
+        df.to_excel(FILE, index=False)
+
+    df = cargar()
+
+    st.title("📊 Programación de Servicios")
+
+    columnas = [
+        "N°","MES","CANTIDAD DE UNIDADES REQUERIDAS",
+        "CUMPLIDOS","NO CUMPLIDOS","% CUMPLIMIENTO","META","AÑO"
+    ]
+
+    df = importar_excel(df, columnas, guardar)
+
+    if not df.empty:
+        total = df["CANTIDAD DE UNIDADES REQUERIDAS"].sum()
+        cumplidos = df["CUMPLIDOS"].sum()
+        indicador = (cumplidos/total)*100 if total>0 else 0
+        st.metric("% Cumplimiento", f"{indicador:.2f}%")
+
+    # 🔥 DASHBOARD
+    st.subheader("📊 Dashboard Cumplimiento")
+
+    if not df.empty:
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.write("Tendencia de Cumplimiento")
+            if "% CUMPLIMIENTO" in df.columns:
+                st.line_chart(df["% CUMPLIMIENTO"])
+
+        with col2:
+            st.write("Comparación Cumplidos vs No Cumplidos")
+            st.bar_chart(df[["CUMPLIDOS","NO CUMPLIDOS"]])
+
+    st.dataframe(df)
+
+    # BORRAR TODO
+    df = borrar_todo(df, guardar)
