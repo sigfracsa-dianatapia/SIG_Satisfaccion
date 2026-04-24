@@ -3,209 +3,193 @@ import pandas as pd
 import os
 from datetime import datetime
 
-st.set_page_config(page_title="SIG - Indicadores", layout="wide")
+# =========================
+# CONFIGURACIÓN
+# =========================
+FILE_PATH = "programacion_servicios.xlsx"
+SHEET_NAME = "PROGRAMACION DE SERVICIO (1)-PP"
 
-# ============================================================
-# 🔧 FUNCIÓN UNIVERSAL DE IMPORTACIÓN
-# ============================================================
-def importar_excel(df_actual, columnas_esperadas, guardar_func):
-    st.subheader("📥 Importar datos desde Excel")
+st.set_page_config(page_title="Programación de Servicios", layout="wide")
+st.title("📊 Programación de Servicios - KPI Cumplimiento")
 
-    archivo = st.file_uploader("Sube tu archivo Excel", type=["xlsx"])
-
-    if archivo is not None:
-        try:
-            df_nuevo = pd.read_excel(archivo)
-
-            if not set(columnas_esperadas).issubset(set(df_nuevo.columns)):
-                st.error("❌ El archivo no tiene la estructura correcta")
-                return df_actual
-
-            df_final = pd.concat([df_actual, df_nuevo], ignore_index=True)
-            guardar_func(df_final)
-
-            st.success(f"✅ {len(df_nuevo)} registros importados")
-            return df_final
-
-        except Exception as e:
-            st.error(f"Error: {e}")
-
-    return df_actual
-
-
-# ============================================================
-# 📌 MENÚ
-# ============================================================
-menu = st.sidebar.selectbox("Selecciona módulo", [
-    "Proveedores",
-    "Satisfacción Cliente",
-    "Programación Servicios"
-])
-
-# ============================================================
-# =================== PROVEEDORES =============================
-# ============================================================
-if menu == "Proveedores":
-
-    FILE = "proveedores.csv"
-
-    if not os.path.exists(FILE):
-        pd.DataFrame(columns=[
-            "N°","MES","RUC","PROVEEDOR","RUBRO","PUNTAJE",
-            "ESTATUS","CALIFICACION","FECHA","REEVALUACION",
-            "ESTADO","CRITICIDAD","ESTADO PROV"
-        ]).to_csv(FILE, index=False)
-
-    df = pd.read_csv(FILE)
-
-    def guardar(df): df.to_csv(FILE, index=False)
-
-    st.title("📊 Evaluación de Proveedores")
-
-    # IMPORTACIÓN
+# =========================
+# FUNCIONES
+# =========================
+def cargar_datos():
     columnas = [
-        "N°","MES","RUC","PROVEEDOR","RUBRO","PUNTAJE",
-        "ESTATUS","CALIFICACION","FECHA","REEVALUACION",
-        "ESTADO","CRITICIDAD","ESTADO PROV"
-    ]
-    df = importar_excel(df, columnas, guardar)
-
-    # FORMULARIO
-    with st.form("form_prov"):
-        proveedor = st.text_input("Proveedor")
-        ruc = st.text_input("RUC")
-        puntaje = st.number_input("Puntaje", 0.0, 5.0, step=0.1)
-
-        if st.form_submit_button("Guardar"):
-            estatus = "APROBADO" if puntaje >= 4 else "NO APROBADO"
-
-            nuevo = pd.DataFrame([{
-                "N°": len(df)+1,
-                "MES": "N/A",
-                "RUC": ruc,
-                "PROVEEDOR": proveedor,
-                "RUBRO": "",
-                "PUNTAJE": puntaje,
-                "ESTATUS": estatus,
-                "CALIFICACION": "",
-                "FECHA": datetime.today(),
-                "REEVALUACION": "",
-                "ESTADO": "",
-                "CRITICIDAD": "CRITICO",
-                "ESTADO PROV": "ACTIVO"
-            }])
-
-            df = pd.concat([df, nuevo], ignore_index=True)
-            guardar(df)
-            st.success("Guardado")
-
-    # KPI
-    criticos = df[df["CRITICIDAD"]=="CRITICO"]
-    indicador = (len(criticos[criticos["ESTATUS"]=="APROBADO"]) / len(criticos))*100 if len(criticos)>0 else 0
-    st.metric("Indicador %", f"{indicador:.2f}%")
-
-    # TABLA
-    st.data_editor(df)
-
-    # ELIMINAR
-    if not df.empty:
-        sel = st.multiselect("Eliminar", df.index)
-        if st.button("Eliminar seleccionados"):
-            df = df.drop(sel)
-            guardar(df)
-
-# ============================================================
-# ================= SATISFACCIÓN ==============================
-# ============================================================
-elif menu == "Satisfacción Cliente":
-
-    FILE = "satisfaccion.xlsx"
-
-    def cargar():
-        if os.path.exists(FILE):
-            return pd.read_excel(FILE)
-        return pd.DataFrame()
-
-    def guardar(df):
-        df.to_excel(FILE, index=False)
-
-    df = cargar()
-
-    st.title("😊 Satisfacción del Cliente")
-
-    columnas = ["MES","FECHA DE EVALUACION","CLIENTE EVALUADO"] + [f"P{i}" for i in range(1,11)]
-    df = importar_excel(df, columnas, guardar)
-
-    with st.form("form_cli"):
-        cliente = st.text_input("Cliente")
-        preguntas = {f"P{i}": st.number_input(f"P{i}",1.0,10.0) for i in range(1,11)}
-
-        if st.form_submit_button("Guardar"):
-            nuevo = {"CLIENTE EVALUADO":cliente}
-            nuevo.update(preguntas)
-
-            df = pd.concat([df, pd.DataFrame([nuevo])])
-            guardar(df)
-
-    if not df.empty:
-        vals = df[[f"P{i}" for i in range(1,11)]].values.flatten()
-        vals = [v for v in vals if pd.notnull(v)]
-        indicador = (len([v for v in vals if v>=8])/len(vals))*100 if vals else 0
-        st.metric("% Satisfacción", f"{indicador:.2f}%")
-
-    st.dataframe(df)
-
-# ============================================================
-# ================= PROGRAMACIÓN ==============================
-# ============================================================
-elif menu == "Programación Servicios":
-
-    FILE = "programacion.xlsx"
-
-    def cargar():
-        if os.path.exists(FILE):
-            return pd.read_excel(FILE)
-        return pd.DataFrame()
-
-    def guardar(df):
-        df.to_excel(FILE, index=False)
-
-    df = cargar()
-
-    st.title("📊 Programación de Servicios")
-
-    columnas = [
-        "N°","MES","CANTIDAD DE UNIDADES REQUERIDAS",
+        "N°","MES","INICIO DE SEMANA","FIN DE SEMANA",
+        "FECHA DE REQUERIMIENTO","CLIENTE","PLANTA ORIGEN",
+        "PLANTA DESTINO","CANTIDAD DE UNIDADES REQUERIDAS",
         "CUMPLIDOS","NO CUMPLIDOS","% CUMPLIMIENTO","META","AÑO"
     ]
-    df = importar_excel(df, columnas, guardar)
+    if os.path.exists(FILE_PATH):
+        try:
+            return pd.read_excel(FILE_PATH, sheet_name=SHEET_NAME)
+        except:
+            return pd.DataFrame(columns=columnas)
+    return pd.DataFrame(columns=columnas)
 
-    with st.form("form_prog"):
-        cantidad = st.number_input("Total Programado", 0)
-        cumplidos = st.number_input("Cumplidos", 0)
+def guardar_datos(df):
+    with pd.ExcelWriter(FILE_PATH, engine="openpyxl", mode="w") as writer:
+        df.to_excel(writer, sheet_name=SHEET_NAME, index=False)
 
-        if st.form_submit_button("Guardar"):
-            porcentaje = (cumplidos/cantidad)*100 if cantidad>0 else 0
+# =========================
+# CARGAR DATA
+# =========================
+df = cargar_datos()
 
-            nuevo = pd.DataFrame([{
-                "N°": len(df)+1,
-                "MES": "N/A",
-                "CANTIDAD DE UNIDADES REQUERIDAS": cantidad,
-                "CUMPLIDOS": cumplidos,
-                "NO CUMPLIDOS": cantidad-cumplidos,
-                "% CUMPLIMIENTO": porcentaje,
-                "META": 95,
-                "AÑO": datetime.today().year
-            }])
+# =========================
+# FORMULARIO
+# =========================
+st.subheader("➕ Registrar Programación")
 
-            df = pd.concat([df, nuevo])
-            guardar(df)
+with st.form("form_programacion", clear_on_submit=True):
+    col1, col2, col3 = st.columns(3)
 
-    if not df.empty:
-        total = df["CANTIDAD DE UNIDADES REQUERIDAS"].sum()
-        cumplidos = df["CUMPLIDOS"].sum()
-        indicador = (cumplidos/total)*100 if total>0 else 0
+    with col1:
+        numero = st.number_input("N°", min_value=1, step=1)
+        mes = st.selectbox("MES", [
+            "Enero","Febrero","Marzo","Abril","Mayo","Junio",
+            "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"
+        ])
+        anio = st.number_input("AÑO", min_value=2020, max_value=2100, value=datetime.today().year)
 
-        st.metric("% Cumplimiento", f"{indicador:.2f}%")
+    with col2:
+        inicio_semana = st.date_input("INICIO DE SEMANA")
+        fin_semana = st.date_input("FIN DE SEMANA")
+        fecha_req = st.date_input("FECHA DE REQUERIMIENTO")
 
-    st.dataframe(df)
+    with col3:
+        cliente = st.text_input("CLIENTE")
+        planta_origen = st.text_input("PLANTA ORIGEN")
+        planta_destino = st.text_input("PLANTA DESTINO")
+
+    st.markdown("### 🚚 Unidades")
+    col4, col5 = st.columns(2)
+
+    with col4:
+        cantidad = st.number_input("CANTIDAD DE UNIDADES REQUERIDAS", min_value=0)
+
+    with col5:
+        cumplidos = st.number_input("CUMPLIDOS", min_value=0)
+
+    # =========================
+    # CÁLCULOS AUTOMÁTICOS
+    # =========================
+    no_cumplidos = cantidad - cumplidos if cantidad >= cumplidos else 0
+    porcentaje = (cumplidos / cantidad) * 100 if cantidad > 0 else 0
+    META = 95
+
+    st.info(f"📊 % Cumplimiento calculado: {porcentaje:.2f}%")
+
+    if st.form_submit_button("Guardar"):
+
+        nuevo = pd.DataFrame([{
+            "N°": numero,
+            "MES": mes,
+            "INICIO DE SEMANA": inicio_semana,
+            "FIN DE SEMANA": fin_semana,
+            "FECHA DE REQUERIMIENTO": fecha_req,
+            "CLIENTE": cliente,
+            "PLANTA ORIGEN": planta_origen,
+            "PLANTA DESTINO": planta_destino,
+            "CANTIDAD DE UNIDADES REQUERIDAS": cantidad,
+            "CUMPLIDOS": cumplidos,
+            "NO CUMPLIDOS": no_cumplidos,
+            "% CUMPLIMIENTO": porcentaje,
+            "META": META,
+            "AÑO": anio
+        }])
+
+        df = pd.concat([df, nuevo], ignore_index=True)
+        guardar_datos(df)
+        st.success("✅ Registro guardado correctamente")
+
+# =========================
+# KPI GENERAL
+# =========================
+st.subheader("📈 Indicador General")
+
+if not df.empty:
+    total_programado = df["CANTIDAD DE UNIDADES REQUERIDAS"].sum()
+    total_cumplidos = df["CUMPLIDOS"].sum()
+
+    indicador = (total_cumplidos / total_programado) * 100 if total_programado > 0 else 0
+
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric("Total Programado", int(total_programado))
+    col2.metric("Total Cumplido", int(total_cumplidos))
+    col3.metric("% Cumplimiento", f"{indicador:.2f}%")
+
+    if indicador >= 95:
+        st.success("✅ Meta cumplida")
+    else:
+        st.error("❌ Meta no cumplida")
+
+# =========================
+# TABLA EDITABLE
+# =========================
+st.subheader("📋 Base de Datos")
+
+if not df.empty:
+    edited_df = st.data_editor(df, use_container_width=True, num_rows="dynamic")
+
+    if st.button("💾 Guardar cambios"):
+        guardar_datos(edited_df)
+        st.success("✅ Cambios guardados correctamente")
+else:
+    st.info("No hay datos registrados")
+
+# =========================
+# 🗑️ ELIMINACIÓN INTELIGENTE
+# =========================
+st.subheader("🗑️ Gestión de Eliminación de Registros")
+
+if not df.empty:
+
+    seleccion = st.multiselect(
+        "Selecciona registros a eliminar",
+        options=df.index,
+        format_func=lambda x: (
+            f"N° {df.loc[x,'N°']} | {df.loc[x,'CLIENTE']} | "
+            f"{df.loc[x,'MES']} | Cumplimiento: {round(df.loc[x,'% CUMPLIMIENTO'],2)}%"
+        )
+    )
+
+    col1, col2 = st.columns(2)
+
+    # Eliminación parcial
+    with col1:
+        if st.button("Eliminar seleccionados"):
+            if seleccion:
+                df = df.drop(seleccion).reset_index(drop=True)
+                guardar_datos(df)
+                st.success(f"✅ Se eliminaron {len(seleccion)} registros")
+            else:
+                st.warning("⚠️ Selecciona al menos un registro")
+
+    # Eliminación total
+    with col2:
+        st.markdown("### ⚠️ Eliminación total")
+
+        confirmacion_1 = st.checkbox("Confirmo eliminar todos los registros")
+        confirmacion_2 = st.checkbox("Entiendo que no se puede deshacer")
+
+        if st.button("🧨 Borrar toda la base"):
+            if confirmacion_1 and confirmacion_2:
+                df = df.iloc[0:0]
+                guardar_datos(df)
+                st.error("🚨 Base de datos eliminada completamente")
+            else:
+                st.warning("⚠️ Debes confirmar ambas opciones")
+
+else:
+    st.info("📭 No hay registros para eliminar")
+
+# =========================
+# GRÁFICO
+# =========================
+if not df.empty:
+    st.subheader("📊 Tendencia de Cumplimiento")
+    st.line_chart(df["% CUMPLIMIENTO"])
